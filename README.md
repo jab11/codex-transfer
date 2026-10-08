@@ -327,8 +327,9 @@ These tools target the inspected `state_5.sqlite` and
 They are a local data migration implementation, not an official OpenAI import
 format. Automated storage checks do not prove that every Codex desktop version
 will display/resume imported threads identically; verify the destination app.
-Testing was performed on macOS; migration between different operating systems
-and path syntaxes has not been validated.
+The integration suite passes on macOS and Linux with Python 3.9 and 3.13.
+Live storage and desktop verification were performed on macOS; migration between
+different operating systems and path syntaxes has not been validated.
 
 On October 8, 2026, all 31 integration tests passed, including stopped-client
 guards before staging and installation, read-only previews with running clients, compatibility
