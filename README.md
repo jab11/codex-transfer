@@ -4,6 +4,8 @@ Export selected local Codex projects or threads, then import their conversation
 history on another computer. Keep the rest of each machine's history in place.
 Transfer a whole project, several projects, individual threads, or a directory
 subtree. Large sessions are streamed: there is no 10 MB per-thread limit.
+If you already imported history with incorrect folders, use
+`remap-codex-paths.py` to repair the stored project and thread paths.
 
 This is an **unofficial, schema-specific migration tool**. It works directly with
 local Codex storage, not an OpenAI service or supported interchange API. Preview
@@ -27,10 +29,11 @@ git clone https://github.com/jab11/codex-transfer.git
 cd codex-transfer
 python3 codex-export.py --help
 python3 codex-import.py --help
+python3 remap-codex-paths.py --help
 ```
 
-Keep `transfer.py` beside both entry scripts. No-argument invocation shows help.
-Version information is available with `--version`.
+Keep `transfer.py` beside all three scripts. Export/import entry scripts show
+help when invoked with no arguments and report their version with `--version`.
 
 ## Quick start: migrate one project
 
@@ -76,7 +79,7 @@ folder itself, so history can be imported before you copy the code.
 
 ## Output and scripting
 
-Commands print readable summaries by default: counts, paths, status policy,
+Export and import commands print readable summaries by default: counts, paths, status policy,
 missing assets, backup locations, and next steps. Add `--json` for the original
 machine-readable output, with no explanatory prose on stdout:
 
@@ -95,6 +98,7 @@ even if it finds incompatible schemas. Scripts should inspect each database's
 
 As of v1.4.0, scripts that parsed the default JSON output must add `--json`.
 The bundle format is unchanged; earlier bundles do not need to be re-exported.
+The folder-remapping helper prints its preview or repair receipt as JSON.
 
 ## What the tools change
 
@@ -285,6 +289,74 @@ further work. Archived source threads remain in Archived chats. The tools do not
 start/resume a thread, replay a command, or send a prompt. Opening/running Codex
 afterward is a separate operation and follows the destination's existing setup.
 
+## Repair folders after importing
+
+Use `remap-codex-paths.py` on the computer whose local Codex metadata needs
+correcting. It does not require the export bundle or another import. First
+inspect the existing registrations:
+
+```bash
+python3 codex-export.py --list-projects
+```
+
+Then preview the path corrections. No `--apply` means a read-only preview:
+
+```bash
+python3 remap-codex-paths.py \
+  --path-map '/Users/old/workspace/project=/Users/new/Documents/project'
+```
+
+The JSON report lists changed project roots, old/new paths, the number of thread
+working directories affected, and whether app metadata will change. Inspect the
+report, quit all Codex clients using this home, then apply the same mapping:
+
+```bash
+python3 remap-codex-paths.py \
+  --path-map '/Users/old/workspace/project=/Users/new/Documents/project' \
+  --apply --codex-stopped
+```
+
+Repeat `--path-map OLD=NEW` for several projects. Both paths must be absolute;
+matching uses directory boundaries and the longest prefix first. All matching
+local project roots and thread working directories are updated, including nested
+directories. Preserve a project's nested suffix if it belongs below the top of
+the source repository. New project roots and affected working directories must
+already exist. The helper does not search for folders, create directories, or
+choose between registrations with duplicate roots.
+
+Use `--codex-home /absolute/path/to/.codex` for another local storage directory;
+otherwise the default is `CODEX_HOME`, or `~/.codex`. Previewing makes no changes.
+Applying uses the same stopped-client checks as import, before preparation and
+again before installation; `--codex-stopped` cannot bypass them. Keep clients
+closed throughout the operation.
+
+The helper updates `project_roots.path`, `threads.cwd`, local sidebar roots,
+thread workspace hints, writable-root path metadata, projectless output paths,
+and cached local thread workspace state. Thread IDs, project IDs, chat status,
+sandbox policies, titles, queued messages, remote-project metadata, source code,
+and Git state are retained. It does not merge duplicate projects. Historical
+messages and session headers still contain their original paths: the helper
+preserves session bytes and verifies hashes of affected session files and the
+history database.
+
+Before installation, it backs up `state_5.sqlite` and the original app JSON to
+`CODEX_HOME/transfer-backups/path-repair-<timestamp>-<uuid>/`. The returned
+`backup` path contains `receipt.json`. Database integrity, foreign keys, schema,
+every metadata-table row, and history hashes are checked; changes beyond the
+planned path fields cause an error. The helper also checks for metadata changes
+that occur during preparation. Ordinary installation exceptions restore the
+original metadata snapshots.
+
+If a forced kill or power failure interrupts installation, keep Codex closed and
+retain a fresh copy of its current storage before restoring the backup. Restore
+only the saved `state_5.sqlite` and `.codex-global-state.json`, removing destination
+`state_5.sqlite-wal` and `state_5.sqlite-shm` first. Never reattach saved
+`.original-sidecar` files: the snapshot already includes pre-repair WAL contents.
+The helper does not modify `thread_history_1.sqlite` or session files, so those
+files do not need restoring for a path repair. Restoring old metadata after
+subsequent Codex use can discard newer changes; inspect the receipt and backups
+before doing so.
+
 ## Backups and recovery
 
 Each modifying import first creates
@@ -321,6 +393,10 @@ paths, existing destination history, preserved/optional archived status, an item
 larger than 10 MB, attachment copying, duplicate protection, corruption/schema
 rejection, dry runs, and rollback on a simulated database installation failure.
 Repository-file hashes are checked throughout.
+Six additional folder-remapping tests cover previews, nested paths, preserved
+history and unrelated metadata, missing destination folders, duplicate roots,
+client reopening before installation, and rollback after an installation failure.
+The CI workflow discovers both test files automatically.
 
 These tools target the inspected `state_5.sqlite` and
 `thread_history_1.sqlite` layouts. Unknown tables/database versions fail closed.
@@ -331,7 +407,7 @@ The integration suite passes on macOS and Linux with Python 3.9 and 3.13.
 Live storage and desktop verification were performed on macOS; migration between
 different operating systems and path syntaxes has not been validated.
 
-On October 8, 2026, all 31 integration tests passed, including stopped-client
+On October 8, 2026, all 37 integration tests passed, including stopped-client
 guards before staging and installation, read-only previews with running clients, compatibility
 diagnostics, harmless SQL-format/index differences, and rejection of changed
 constraints/migration checksums. An actual 251,040,465-byte
@@ -394,8 +470,10 @@ synchronize data.
 
 ## Development
 
-The implementation lives in `transfer.py`; the two entry scripts call its export
-and import functions. `tests/schema.json` contains SQL definitions only, and the
+The export/import implementation lives in `transfer.py`; their entry scripts call
+its functions. `remap-codex-paths.py` performs offline path repairs and reuses the
+shared path mapping, storage checks, and stopped-client guard. `tests/schema.json`
+contains SQL definitions only, and the
 tests construct invented conversation records in temporary directories. No real
 session, bundle, account database, or personal metadata belongs in this repository.
 
