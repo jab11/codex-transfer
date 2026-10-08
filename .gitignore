@@ -1,0 +1,26 @@
+# Python caches and local tooling
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+.coverage
+
+# Never publish conversation bundles, Codex homes, or local snapshots.
+*.sqlite
+*.sqlite-*
+*.jsonl
+*.zip
+.codex/
+bundles/
+exports/
+transfer-backups/
+tool-backups/
+manifest.json
+global-state.json
+.codex-global-state.json
+*.before-*
+sessions/
+archived_sessions/
+attachments/
+generated_images/
+visualizations/
